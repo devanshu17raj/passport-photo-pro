@@ -1,11 +1,17 @@
 # ── Stage 1: build React app ──────────────────────────────────────────────
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files first (better layer caching)
-COPY package.json package-lock.json ./
-RUN npm ci --silent
+# Copy only package.json first for better layer caching.
+# We use npm install (not npm ci) because package-lock.json
+# may not always be committed to the repo.
+COPY package.json ./
+
+# Copy lock file only if it exists (conditional via wildcard)
+COPY package*.json ./
+
+RUN npm install --silent
 
 # Copy source and build
 COPY . .
@@ -16,7 +22,7 @@ ENV VITE_API_URL=$VITE_API_URL
 
 RUN npm run build
 
-# ── Stage 2: serve with Nginx ──────────────────────────────────────────────
+# ── Stage 2: serve with Nginx ─────────────────────────────────────────────
 FROM nginx:alpine AS runtime
 
 # Remove default nginx site

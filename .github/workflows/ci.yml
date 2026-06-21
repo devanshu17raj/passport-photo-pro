@@ -17,18 +17,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Detect backend folder name (handles Backend/ or backend/)
-        id: dirs
+      - name: Detect backend folder (handles Backend/ or backend/)
         run: |
           if [ -d "Backend" ]; then
             echo "BACKEND_DIR=Backend" >> $GITHUB_ENV
           else
             echo "BACKEND_DIR=backend" >> $GITHUB_ENV
-          fi
-          if [ -d "Frontend" ]; then
-            echo "FRONTEND_DIR=Frontend" >> $GITHUB_ENV
-          else
-            echo "FRONTEND_DIR=frontend" >> $GITHUB_ENV
           fi
 
       - name: Set up Python 3.11
@@ -41,20 +35,13 @@ jobs:
       - name: Install dependencies (fast — no rembg)
         run: pip install -r ${{ env.BACKEND_DIR }}/requirements-ci.txt
 
-      - name: Run pytest (rembg is mocked in all tests)
+      - name: Run pytest
+        # Run from the backend directory so conftest.py and pytest.ini are found
         working-directory: ${{ env.BACKEND_DIR }}
-        run: pytest app/tests/test_image_service.py -v --tb=short
+        run: pytest -v --tb=short
         env:
           DATABASE_URL: "sqlite+aiosqlite:///./test.db"
           SECRET_KEY: "ci-test-secret"
-          PYTHONPATH: "."
-
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: pytest-results
-          path: ${{ env.BACKEND_DIR }}/.pytest_cache
 
   # ── Frontend: build ───────────────────────────────────────────────────────
   frontend-build:
@@ -65,7 +52,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Detect frontend folder name
+      - name: Detect frontend folder (handles Frontend/ or frontend/)
         run: |
           if [ -d "Frontend" ]; then
             echo "FRONTEND_DIR=Frontend" >> $GITHUB_ENV
@@ -76,18 +63,20 @@ jobs:
       - name: Set up Node 20
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
+          # Use npm cache without lock file dependency to handle missing package-lock
           cache: "npm"
-          cache-dependency-path: ${{ env.FRONTEND_DIR }}/package-lock.json
+          cache-dependency-path: ${{ env.FRONTEND_DIR }}/package.json
 
       - name: Install dependencies
-        #run: npm ci
-        run: npm install
         working-directory: ${{ env.FRONTEND_DIR }}
+        # Use npm install instead of npm ci — works even if package-lock.json
+        # was not committed (npm ci requires the lock file)
+        run: npm install
 
       - name: Build
-        run: npm run build
         working-directory: ${{ env.FRONTEND_DIR }}
+        run: npm run build
         env:
           VITE_API_URL: "https://placeholder-backend.onrender.com"
 
@@ -98,7 +87,7 @@ jobs:
           path: ${{ env.FRONTEND_DIR }}/dist
           retention-days: 7
 
-  # ── Docker: build check (only on push, only after tests pass) ─────────────
+  # ── Docker: build check ───────────────────────────────────────────────────
   docker-build:
     name: Docker Build Check
     runs-on: ubuntu-latest
