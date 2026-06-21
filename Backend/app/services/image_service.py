@@ -9,15 +9,6 @@ import logging
 from dataclasses import dataclass
 
 from PIL import Image, ImageOps, ImageEnhance
-#from rembg import remove as rembg_remove
-# ── PATH A: CI/CD Safety Block ───────────────────────────────────────────────
-# This prevents the GitHub Actions container from crashing during test collection.
-try:
-    from rembg import remove as rembg_remove
-except ImportError:
-    # Fallback for CI/CD environments where rembg is excluded to save build time.
-    # Pytest will safely mock this at runtime during testing.
-    rembg_remove = None
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +84,7 @@ def validate_image(data: bytes) -> None:
 def remove_background(data: bytes) -> Image.Image:
     """Run U2-Net via rembg. Returns RGBA image."""
     try:
+        from rembg import remove as rembg_remove  # lazy import — not needed at collection time
         result = rembg_remove(data)
         return Image.open(io.BytesIO(result)).convert("RGBA")
     except Exception as exc:

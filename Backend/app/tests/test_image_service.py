@@ -1,16 +1,13 @@
 """
-Tests for image_service.py — no rembg calls (mocked), pure pipeline logic.
-Run with: pytest backend/app/tests/ -v
+Tests for image_service.py — rembg is mocked, no real model needed.
+Run with: pytest  (from backend/ directory)
 """
-
 import io
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from PIL import Image
 
-import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
-
+# sys.path is handled by backend/conftest.py — no manual path manipulation needed
 from app.services.image_service import (
     ImageProcessingError,
     PhotoSpec,
@@ -44,14 +41,12 @@ def make_rgba_bytes(width=300, height=400) -> bytes:
 SPEC = PhotoSpec(width_mm=35, height_mm=45)
 
 
-# ── mm_to_px ─────────────────────────────────────────────────────────────────
+# ── mm_to_px ──────────────────────────────────────────────────────────────────
 
 def test_mm_to_px_india_passport():
-    # 35mm at 300 DPI ≈ 413px
     assert mm_to_px(35) == 413
 
 def test_mm_to_px_usa_passport():
-    # 51mm at 300 DPI ≈ 602px
     assert mm_to_px(51) == 602
 
 def test_mm_to_px_minimum():
@@ -61,7 +56,7 @@ def test_mm_to_px_minimum():
 # ── validate_image ────────────────────────────────────────────────────────────
 
 def test_validate_ok():
-    validate_image(make_image_bytes())  # should not raise
+    validate_image(make_image_bytes())
 
 def test_validate_too_large():
     big = b"x" * (16 * 1024 * 1024)
@@ -89,9 +84,8 @@ def test_composite_white():
     assert result.mode == "RGB"
 
 def test_composite_blue_bg():
-    img = Image.new("RGBA", (100, 100), (0, 0, 0, 0))  # fully transparent
+    img = Image.new("RGBA", (100, 100), (0, 0, 0, 0))
     result = composite_on_bg(img, "#0000FF")
-    # Pixel should be blue
     r, g, b = result.getpixel((50, 50))
     assert b == 255 and r == 0 and g == 0
 
@@ -101,7 +95,7 @@ def test_composite_rgb_input():
     assert result.mode == "RGB"
 
 
-# ── enhance ──────────────────────────────────────────────────────────────────
+# ── enhance ───────────────────────────────────────────────────────────────────
 
 def test_enhance_returns_image():
     img = Image.new("RGB", (200, 200), (128, 128, 128))
@@ -110,18 +104,16 @@ def test_enhance_returns_image():
     assert result.size == (200, 200)
 
 
-# ── process_photo (bg removal mocked) ────────────────────────────────────────
+# ── process_photo ─────────────────────────────────────────────────────────────
 
 def test_process_photo_skip_bg():
     data = make_rgba_bytes()
     img = process_photo(data, SPEC, skip_bg_removal=True)
     assert isinstance(img, Image.Image)
-    # Should be resized to spec dimensions (with border)
     assert img.size == (SPEC.cell_w, SPEC.cell_h)
 
-@patch("app.services.image_service.rembg_remove")
+@patch("rembg.remove")
 def test_process_photo_with_bg_removal(mock_rembg):
-    # Mock rembg to return a known RGBA image
     result_img = Image.new("RGBA", (300, 400), (200, 180, 160, 255))
     buf = io.BytesIO()
     result_img.save(buf, format="PNG")
@@ -139,26 +131,23 @@ def test_process_photo_bad_file():
 
 # ── build_pdf ─────────────────────────────────────────────────────────────────
 
-def _make_processed_photo(spec: PhotoSpec) -> Image.Image:
-    """Simulate a processed photo (already resized + bordered)."""
-    img = Image.new("RGB", (spec.cell_w, spec.cell_h), (200, 190, 180))
-    return img
+def _make_cell(spec: PhotoSpec) -> Image.Image:
+    return Image.new("RGB", (spec.cell_w, spec.cell_h), (200, 190, 180))
 
 def test_build_pdf_single_photo():
-    photo = _make_processed_photo(SPEC)
+    photo = _make_cell(SPEC)
     pdf_bytes, meta = build_pdf([photo], SPEC, [6])
     assert pdf_bytes[:4] == b"%PDF"
     assert meta["total_copies"] == 6
     assert meta["num_pages"] >= 1
 
 def test_build_pdf_multiple_copies_overflow():
-    photo = _make_processed_photo(SPEC)
-    # 30 copies should overflow onto 2+ pages
+    photo = _make_cell(SPEC)
     pdf_bytes, meta = build_pdf([photo], SPEC, [30])
     assert meta["total_copies"] == 30
 
 def test_build_pdf_multiple_photos():
-    photos = [_make_processed_photo(SPEC) for _ in range(3)]
+    photos = [_make_cell(SPEC) for _ in range(3)]
     pdf_bytes, meta = build_pdf(photos, SPEC, [4, 4, 4])
     assert meta["total_copies"] == 12
 
@@ -167,7 +156,6 @@ def test_build_pdf_empty():
         build_pdf([], SPEC, [])
 
 def test_build_pdf_returns_valid_pdf():
-    photo = _make_processed_photo(SPEC)
+    photo = _make_cell(SPEC)
     pdf_bytes, _ = build_pdf([photo], SPEC, [1])
-    # Basic PDF magic bytes check
     assert b"%PDF" in pdf_bytes[:10]
