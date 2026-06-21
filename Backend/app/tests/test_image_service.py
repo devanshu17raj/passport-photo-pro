@@ -112,17 +112,17 @@ def test_process_photo_skip_bg():
     assert isinstance(img, Image.Image)
     assert img.size == (SPEC.cell_w, SPEC.cell_h)
 
-@patch("rembg.remove")
-def test_process_photo_with_bg_removal(mock_rembg):
+def test_process_photo_with_bg_removal():
+    # Patch remove_background directly — avoids importing rembg entirely.
+    # rembg is NOT installed on CI; patching the function that calls it
+    # is the correct pattern for a lazy import.
     result_img = Image.new("RGBA", (300, 400), (200, 180, 160, 255))
-    buf = io.BytesIO()
-    result_img.save(buf, format="PNG")
-    mock_rembg.return_value = buf.getvalue()
 
-    data = make_image_bytes()
-    img = process_photo(data, SPEC, skip_bg_removal=False)
-    assert mock_rembg.called
-    assert isinstance(img, Image.Image)
+    with patch("app.services.image_service.remove_background", return_value=result_img) as mock_rb:
+        data = make_image_bytes()
+        img = process_photo(data, SPEC, skip_bg_removal=False)
+        assert mock_rb.called
+        assert isinstance(img, Image.Image)
 
 def test_process_photo_bad_file():
     with pytest.raises(ImageProcessingError):
