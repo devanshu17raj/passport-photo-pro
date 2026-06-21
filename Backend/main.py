@@ -32,7 +32,7 @@ def create_app() -> FastAPI:
     origins = os.environ.get("CORS_ORIGINS", "http://localhost:5173").split(",")
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=origins,
+        allow_origins=["https://passport-photo-pro-dct2.onrender.com/"],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
