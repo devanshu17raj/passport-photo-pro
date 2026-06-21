@@ -2,6 +2,7 @@
 Tests for image_service.py — no rembg calls (mocked), pure pipeline logic.
 Run with: pytest backend/app/tests/ -v
 """
+
 import io
 import pytest
 from unittest.mock import patch, MagicMock
@@ -9,9 +10,6 @@ from PIL import Image
 
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
-
-# ── CI FIX: Fake the rembg module before app imports load it ──────────────────
-sys.modules['rembg'] = MagicMock()
 
 from app.services.image_service import (
     ImageProcessingError,
