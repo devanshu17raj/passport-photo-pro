@@ -3,36 +3,47 @@ name: CD — Deploy to Render
 on:
   push:
     branches: [main]
-  workflow_dispatch:   # allows manual trigger from GitHub Actions UI
+  workflow_dispatch:   # manual trigger from GitHub Actions UI
+
+# Only runs when Render secrets are configured.
+# Until you set them up, this workflow will be skipped gracefully.
 
 jobs:
 
   deploy:
     name: Trigger Render Deploy
     runs-on: ubuntu-latest
+    # Skip entirely if the deploy hook secret is not set yet
+    if: ${{ secrets.RENDER_BACKEND_DEPLOY_HOOK != '' }}
 
     steps:
       - name: Trigger backend deploy
         run: |
-          curl -s -X POST "${{ secrets.RENDER_BACKEND_DEPLOY_HOOK }}" \
-            -H "Content-Type: application/json" \
-            | jq '.deploy.id // "deploy triggered"'
+          RESPONSE=$(curl -s -X POST "${{ secrets.RENDER_BACKEND_DEPLOY_HOOK }}" \
+            -H "Content-Type: application/json")
+          echo "Backend deploy response: $RESPONSE"
 
       - name: Trigger frontend deploy
+        if: ${{ secrets.RENDER_FRONTEND_DEPLOY_HOOK != '' }}
         run: |
-          curl -s -X POST "${{ secrets.RENDER_FRONTEND_DEPLOY_HOOK }}" \
-            -H "Content-Type: application/json" \
-            | jq '.deploy.id // "deploy triggered"'
+          RESPONSE=$(curl -s -X POST "${{ secrets.RENDER_FRONTEND_DEPLOY_HOOK }}" \
+            -H "Content-Type: application/json")
+          echo "Frontend deploy response: $RESPONSE"
 
-      - name: Wait and verify backend health
+      - name: Wait for backend to come up
         run: |
-          echo "Waiting 60s for backend to come up..."
-          sleep 60
+          echo "Waiting 90s for services to restart..."
+          sleep 90
+
+      - name: Verify backend health
+        if: ${{ secrets.BACKEND_URL != '' }}
+        run: |
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
             "${{ secrets.BACKEND_URL }}/api/health")
+          echo "Health check status: HTTP $STATUS"
           if [ "$STATUS" = "200" ]; then
-            echo "✓ Backend is healthy (HTTP $STATUS)"
+            echo "✓ Backend is healthy"
           else
-            echo "✗ Backend health check failed (HTTP $STATUS)"
+            echo "✗ Health check returned HTTP $STATUS — check Render logs"
             exit 1
           fi
