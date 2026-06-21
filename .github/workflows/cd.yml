@@ -1,0 +1,38 @@
+name: CD — Deploy to Render
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:   # allows manual trigger from GitHub Actions UI
+
+jobs:
+
+  deploy:
+    name: Trigger Render Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Trigger backend deploy
+        run: |
+          curl -s -X POST "${{ secrets.RENDER_BACKEND_DEPLOY_HOOK }}" \
+            -H "Content-Type: application/json" \
+            | jq '.deploy.id // "deploy triggered"'
+
+      - name: Trigger frontend deploy
+        run: |
+          curl -s -X POST "${{ secrets.RENDER_FRONTEND_DEPLOY_HOOK }}" \
+            -H "Content-Type: application/json" \
+            | jq '.deploy.id // "deploy triggered"'
+
+      - name: Wait and verify backend health
+        run: |
+          echo "Waiting 60s for backend to come up..."
+          sleep 60
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            "${{ secrets.BACKEND_URL }}/api/health")
+          if [ "$STATUS" = "200" ]; then
+            echo "✓ Backend is healthy (HTTP $STATUS)"
+          else
+            echo "✗ Backend health check failed (HTTP $STATUS)"
+            exit 1
+          fi

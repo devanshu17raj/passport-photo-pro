@@ -1,0 +1,51 @@
+# Render Blueprint — defines both services in one file.
+# Commit this file to your repo root.
+# In Render dashboard → New → Blueprint → connect your repo.
+
+services:
+
+  # ── FastAPI Backend ──────────────────────────────────────────────────────
+  - type: web
+    name: passport-photo-pro-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free                       # upgrade to starter ($7/mo) for always-on
+    region: singapore                # closest to India
+    healthCheckPath: /api/health
+
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true          # Render generates a random value automatically
+
+      - key: DATABASE_URL
+        value: sqlite+aiosqlite:///./data/passport.db
+
+      - key: CORS_ORIGINS
+        value: https://passport-photo-pro-frontend.onrender.com
+
+      - key: FLASK_ENV
+        value: production
+
+    disk:
+      name: db-storage
+      mountPath: /app/data           # persists SQLite DB across deploys
+      sizeGB: 1
+
+  # ── React Frontend (static site) ─────────────────────────────────────────
+  - type: web
+    name: passport-photo-pro-frontend
+    runtime: docker
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
+    plan: free
+    region: singapore
+
+    buildArgs:
+      - key: VITE_API_URL
+        value: https://passport-photo-pro-backend.onrender.com
+
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html     # React Router SPA fallback

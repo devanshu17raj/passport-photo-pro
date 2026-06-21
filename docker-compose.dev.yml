@@ -1,0 +1,31 @@
+version: "3.9"
+
+# Development override — run with:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#
+# Gives you:
+#   - Backend: uvicorn --reload (auto-restarts on .py file changes)
+#   - Frontend: Vite dev server with HMR on http://localhost:5173
+
+services:
+
+  backend:
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    volumes:
+      - ./backend:/app
+      - db_data:/app/data
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules   # anonymous volume — keeps container's node_modules
+
+volumes:
+  db_data:

@@ -1,0 +1,48 @@
+version: "3.9"
+
+services:
+
+  # ── FastAPI backend ────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ppp-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-change-in-production}
+      - DATABASE_URL=sqlite+aiosqlite:///./data/passport.db
+      - CORS_ORIGINS=http://localhost:5173,http://localhost:80,http://frontend
+      - FLASK_ENV=${FLASK_ENV:-development}
+    volumes:
+      # Persist SQLite DB between container restarts
+      - db_data:/app/data
+      # Mount source for hot-reload in dev (comment out for prod)
+      - ./backend:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ── React frontend (Nginx) ─────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=http://localhost:8000
+    container_name: ppp-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  db_data:
+    driver: local
