@@ -10,6 +10,9 @@ from PIL import Image
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
 
+# ── CI FIX: Fake the rembg module before app imports load it ──────────────────
+sys.modules['rembg'] = MagicMock()
+
 from app.services.image_service import (
     ImageProcessingError,
     PhotoSpec,
