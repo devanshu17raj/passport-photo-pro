@@ -4,17 +4,25 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from contextlib import asynccontextmanager
 import os
+import logging
 
 from app.database import engine, Base
 from app.routes import photos, presets, history, health
 from app.limiter import limiter
 
+logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Create all DB tables on startup
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    # ── FIXED: PROTECT AGAINST MULTI-WORKER RACE CONDITION ──────────────────
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    except Exception as e:
+        if "already exists" in str(e):
+            logger.info("Database tables already initialized by a concurrent worker.")
+        else:
+            raise
     yield
 
 
@@ -29,10 +37,22 @@ def create_app() -> FastAPI:
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-    origins = os.environ.get("CORS_ORIGINS", "http://localhost:5173").split(",")
+    # ── FIXED: REMOVED TRAILING SLASH AND ADDED DEVELOPMENT FALLBACKS ────────
+    # Browsers send origins WITHOUT a trailing slash. Adding "/" causes CORS to fail!
+    allowed_origins = [
+        "https://passport-photo-pro-dct2.onrender.com",  # Your production frontend
+        "http://localhost:5173",                        # Your local Vite preview/dev
+        "http://localhost:3000"                         # Alternative local dev port
+    ]
+
+    # Also include any custom origins passed via environment variables
+    env_origins = os.environ.get("CORS_ORIGINS")
+    if env_origins:
+        allowed_origins.extend([origin.strip() for origin in env_origins.split(",")])
+
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["https://passport-photo-pro-dct2.onrender.com/"],
+        allow_origins=allowed_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
