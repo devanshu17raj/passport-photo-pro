@@ -81,11 +81,26 @@ def validate_image(data: bytes) -> None:
 
 # ── Pipeline steps ────────────────────────────────────────────────────────────
 
+# Lazily-created, cached rembg session — created once, reused across requests.
+# u2netp is the pruned/lightweight U2-Net variant: ~4.7MB vs 176MB for u2net,
+# and uses far less RAM at inference time. Essential on 512MB memory limits.
+_rembg_session = None
+
+
+def _get_rembg_session():
+    global _rembg_session
+    if _rembg_session is None:
+        from rembg import new_session
+        _rembg_session = new_session("u2netp")
+    return _rembg_session
+
+
 def remove_background(data: bytes) -> Image.Image:
-    """Run U2-Net via rembg. Returns RGBA image."""
+    """Run U2-Net (lightweight 'p' variant) via rembg. Returns RGBA image."""
     try:
         from rembg import remove as rembg_remove  # lazy import — not needed at collection time
-        result = rembg_remove(data)
+        session = _get_rembg_session()
+        result = rembg_remove(data, session=session)
         return Image.open(io.BytesIO(result)).convert("RGBA")
     except Exception as exc:
         logger.error("rembg error: %s", exc)
@@ -112,13 +127,37 @@ def enhance(img: Image.Image) -> Image.Image:
     return img
 
 
+MAX_INPUT_DIMENSION = 1200  # px — cap before bg removal; final output is ~400-600px anyway
+
+
+def _downscale_if_large(data: bytes) -> bytes:
+    """
+    Phone cameras shoot 12MP+ photos. rembg's memory usage scales with
+    input resolution, and that's the #1 cause of OOM on 512MB instances.
+    Downscale before running the model — final photo is tiny anyway.
+    """
+    img = Image.open(io.BytesIO(data))
+    w, h = img.size
+    if max(w, h) <= MAX_INPUT_DIMENSION:
+        return data  # already small enough
+
+    scale = MAX_INPUT_DIMENSION / max(w, h)
+    new_size = (int(w * scale), int(h * scale))
+    img = img.convert("RGB").resize(new_size, Image.LANCZOS)
+
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=90)
+    return buf.getvalue()
+
+
 def process_photo(data: bytes, spec: PhotoSpec, skip_bg_removal: bool = False) -> Image.Image:
-    """Full pipeline: validate → bg removal → composite → enhance → resize → border."""
+    """Full pipeline: validate → downscale → bg removal → composite → enhance → resize → border."""
     validate_image(data)
 
     if skip_bg_removal:
         img = Image.open(io.BytesIO(data)).convert("RGBA")
     else:
+        data = _downscale_if_large(data)
         img = remove_background(data)
 
     img = composite_on_bg(img, spec.bg_color)
