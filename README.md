@@ -14,7 +14,7 @@ Upload a photo, pick a country and document type, and Passport Photo Pro automat
 2.Crops and resizes the face to meet the exact spec for that country/document (10 countries, 30+ document types).
 3.Lays the result out on a print-ready A4 sheet at 300 DPI.
 4.Returns a downloadable PDF, with the generation saved to your session history for later re-download.
-
+---
 ## Tech Stack
 
 | Layer     | Technology                                      |
